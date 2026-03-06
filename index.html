@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Gemini Keyword Form</title>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; padding: 40px; max-width: 500px;}
+        .form-group { margin-bottom: 25px; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; }
+        input[type="url"], input[list] { width: 100%; padding: 10px; box-sizing: border-box; }
+        #status { color: #666; font-size: 0.85em; margin-top: 5px; min-height: 20px;}
+        
+        /* Styles to put the input and button side-by-side */
+        .input-row {
+            display: flex;
+            gap: 10px;
+        }
+        .input-row input {
+            flex-grow: 1;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #0056b3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            white-space: nowrap;
+        }
+        button:hover {
+            background-color: #004494;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="form-group">
+        <label for="websiteInput">1. Enter Website Address:</label>
+        <input type="url" id="websiteInput" placeholder="https://www.example.com" value="https://">
+        <div id="status">Waiting for input...</div>
+    </div>
+
+    <div class="form-group">
+        <label for="keywordSelect">2. Extracted Keywords:</label>
+        <div class="input-row">
+            <input list="keywordDatalist" id="keywordSelect" placeholder="Enter a URL and click suggest..." disabled>
+            <button id="suggestBtn" type="button">Suggest keywords</button>
+        </div>
+        <datalist id="keywordDatalist"></datalist>
+    </div>
+
+    <script>
+        const websiteInput = document.getElementById('websiteInput');
+        const keywordSelect = document.getElementById('keywordSelect');
+        const keywordDatalist = document.getElementById('keywordDatalist');
+        const statusDiv = document.getElementById('status');
+        const suggestBtn = document.getElementById('suggestBtn');
+
+        // --- NEW UX FEATURE: Clear default https:// on click ---
+        
+        // When the user clicks into the field
+        websiteInput.addEventListener('focus', () => {
+            if (websiteInput.value === 'https://') {
+                websiteInput.value = '';
+            }
+        });
+
+        // When the user clicks away from the field
+        websiteInput.addEventListener('blur', () => {
+            if (websiteInput.value.trim() === '') {
+                websiteInput.value = 'https://';
+            }
+        });
+
+        // --- END UX FEATURE ---
+
+        suggestBtn.addEventListener('click', async () => {
+            const url = websiteInput.value.trim();
+            
+            if (!url || url === "https://") {
+                statusDiv.innerText = "Please enter a valid URL first.";
+                statusDiv.style.color = "#d9534f";
+                return;
+            }
+
+            // Update UI state
+            statusDiv.innerText = "Securely fetching keywords via PHP...";
+            statusDiv.style.color = "#0056b3";
+            keywordSelect.disabled = true;
+            suggestBtn.disabled = true; 
+            suggestBtn.innerText = "Loading...";
+            keywordSelect.value = "";
+            keywordSelect.placeholder = "Loading keywords...";
+            keywordDatalist.innerHTML = '';
+
+            try {
+                // Base64 encode the URL to bypass the server's firewall
+                const encodedPayload = btoa(url);
+                
+                const response = await fetch(`gemini_proxy.php?payload=${encodedPayload}`, {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.error || `HTTP error! Status: ${response.status}`);
+                }
+
+                const keywords = await response.json();
+
+                // Populate the <datalist>
+                keywords.forEach(keyword => {
+                    const option = document.createElement('option');
+                    option.value = keyword;
+                    keywordDatalist.appendChild(option);
+                });
+
+                // Update UI state on success
+                statusDiv.innerText = "✅ 10 keywords loaded securely!";
+                statusDiv.style.color = "green";
+                keywordSelect.disabled = false;
+                keywordSelect.placeholder = "Double-click or type to view keywords...";
+
+            } catch (error) {
+                console.error('Proxy Error:', error);
+                statusDiv.innerText = `❌ Error: ${error.message}`;
+                statusDiv.style.color = "red";
+                keywordSelect.placeholder = "Failed to load.";
+            } finally {
+                // Always re-enable the button when done
+                suggestBtn.disabled = false;
+                suggestBtn.innerText = "Suggest keywords";
+            }
+        });
+    </script>
+
+</body>
+</html>
