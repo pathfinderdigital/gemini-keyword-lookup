@@ -81,12 +81,18 @@
         // --- END UX FEATURE ---
 
         suggestBtn.addEventListener('click', async () => {
-            const url = websiteInput.value.trim();
+            let url = websiteInput.value.trim();
             
             if (!url || url === "https://") {
                 statusDiv.innerText = "Please enter a valid URL first.";
                 statusDiv.style.color = "#d9534f";
                 return;
+            }
+
+            // Ensure the URL has https:// or http:// at the start
+            if (!url.startsWith('https://') && !url.startsWith('http://')) {
+                url = 'https://' + url;
+                websiteInput.value = url; // Update the value in the input field
             }
 
             // Update UI state
