@@ -5,36 +5,56 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Secure Gemini Keyword Form</title>
     <style>
-        body { font-family: system-ui, -apple-system, sans-serif; padding: 40px; max-width: 500px;}
+        body { font-family: system-ui, -apple-system, sans-serif; padding: 40px; max-width: 500px; margin: 0 auto;}
         .form-group { margin-bottom: 25px; }
         label { display: block; margin-bottom: 8px; font-weight: bold; }
         input[type="url"], input[list] { width: 100%; padding: 10px; box-sizing: border-box; }
-        #status { color: #666; font-size: 0.85em; margin-top: 5px; min-height: 20px;}
         
-        /* Styles to put the input and button side-by-side */
-        .input-row {
-            display: flex;
-            gap: 10px;
+        /* Styles for the link-style button */
+        .action-link-wrapper {
+            text-align: right;
+            margin-top: 8px;
         }
-        .input-row input {
-            flex-grow: 1;
+        
+        .link-button {
+            background: none;
+            border: none;
+            color: #0056b3;
+            text-decoration: underline;
+            cursor: pointer;
+            padding: 0;
+            font-size: 0.9em;
+            font-family: inherit;
         }
-        button {
-            padding: 10px 15px;
-            background-color: #0056b3;
+        
+        .link-button:hover {
+            color: #004494;
+        }
+        
+        .link-button:disabled {
+            color: #999;
+            text-decoration: none;
+            cursor: not-allowed;
+        }
+
+        /* Styles for the primary submit button */
+        .primary-button {
+            display: block;
+            width: 100%;
+            padding: 14px 20px;
+            background-color: #28a745; /* Green to distinguish the final action */
             color: white;
             border: none;
-            border-radius: 4px;
+            border-radius: 6px;
             cursor: pointer;
+            font-size: 1.1em;
             font-weight: bold;
-            white-space: nowrap;
+            margin-top: 40px;
+            transition: background-color 0.2s;
         }
-        button:hover {
-            background-color: #004494;
-        }
-        button:disabled {
-            background-color: #cccccc;
-            cursor: not-allowed;
+        
+        .primary-button:hover {
+            background-color: #218838;
         }
     </style>
 </head>
@@ -43,23 +63,24 @@
     <div class="form-group">
         <label for="websiteInput">1. Enter Website Address:</label>
         <input type="url" id="websiteInput" placeholder="https://www.example.com" value="https://">
-        <div id="status">Waiting for input...</div>
     </div>
 
     <div class="form-group">
         <label for="keywordSelect">2. Extracted Keywords:</label>
-        <div class="input-row">
-            <input list="keywordDatalist" id="keywordSelect" placeholder="Enter a URL and click suggest..." disabled>
-            <button id="suggestBtn" type="button">Suggest keywords</button>
+        <input list="keywordDatalist" id="keywordSelect" placeholder="Enter a URL and click suggest..." disabled>
+        <div class="action-link-wrapper">
+            <button id="suggestBtn" type="button" class="link-button">Suggest keywords</button>
         </div>
         <datalist id="keywordDatalist"></datalist>
     </div>
+
+    <!-- Fake Submit Button to illustrate hierarchy -->
+    <button type="button" class="primary-button" onclick="alert('This is a demo form so submit does nothing.')">Submit Form</button>
 
     <script>
         const websiteInput = document.getElementById('websiteInput');
         const keywordSelect = document.getElementById('keywordSelect');
         const keywordDatalist = document.getElementById('keywordDatalist');
-        const statusDiv = document.getElementById('status');
         const suggestBtn = document.getElementById('suggestBtn');
 
         // --- NEW UX FEATURE: Clear default https:// on click ---
@@ -80,12 +101,23 @@
 
         // --- END UX FEATURE ---
 
+        // --- CROSS-BROWSER DATALIST FIX ---
+        // Because Firefox, Chrome, and Safari render <datalist> differently, we format the 
+        // option values as "Keyword (Relevance: X)" so they display nicely everywhere.
+        // This listener strips the relevance score out the moment the user selects an option.
+        keywordSelect.addEventListener('input', (e) => {
+            const val = e.target.value;
+            if (val.includes(' (Relevance: ')) {
+                e.target.value = val.split(' (Relevance: ')[0];
+            }
+        });
+        // --- END CROSS-BROWSER FIX ---
+
         suggestBtn.addEventListener('click', async () => {
             let url = websiteInput.value.trim();
             
             if (!url || url === "https://") {
-                statusDiv.innerText = "Please enter a valid URL first.";
-                statusDiv.style.color = "#d9534f";
+                console.warn("Please enter a valid URL first.");
                 return;
             }
 
@@ -96,14 +128,20 @@
             }
 
             // Update UI state
-            statusDiv.innerText = "Securely fetching keywords via PHP...";
-            statusDiv.style.color = "#0056b3";
+            console.log("Securely fetching keywords via PHP...");
             keywordSelect.disabled = true;
             suggestBtn.disabled = true; 
             suggestBtn.innerText = "Loading...";
             keywordSelect.value = "";
-            keywordSelect.placeholder = "Loading keywords...";
             keywordDatalist.innerHTML = '';
+
+            // Setup the animated loading periods
+            let dotCount = 0;
+            keywordSelect.placeholder = "Loading keywords";
+            const loadingInterval = setInterval(() => {
+                dotCount = (dotCount + 1) % 4; // Cycles between 0, 1, 2, and 3
+                keywordSelect.placeholder = "Loading keywords" + ".".repeat(dotCount);
+            }, 400); // Updates every 400 milliseconds
 
             try {
                 // Base64 encode the URL to bypass the server's firewall
@@ -120,26 +158,41 @@
                 }
 
                 const keywords = await response.json();
+                
+                // Log to console so you can inspect the exact format Gemini returned
+                console.log("Data received from Gemini:", keywords);
 
-                // Populate the <datalist>
-                keywords.forEach(keyword => {
+                // Populate the <datalist> securely, guarding against [object Object] bugs
+                keywords.forEach(item => {
                     const option = document.createElement('option');
-                    option.value = keyword;
+                    
+                    // Check if the AI returned a flat string array or the complex object array
+                    if (typeof item === 'string') {
+                        option.value = item;
+                    } else if (typeof item === 'object' && item !== null) {
+                        // Extract keyword and relevance, with fallbacks in case the AI renames the keys
+                        const kw = item.keyword || Object.keys(item)[0] || "Unknown Keyword";
+                        const rel = item.relevance || Object.values(item)[0] || "";
+                        
+                        // Force conversion to String and combine into a single value for cross-browser consistency
+                        option.value = `${String(kw)} (Relevance: ${String(rel)})`;
+                    }
+                    
                     keywordDatalist.appendChild(option);
                 });
 
                 // Update UI state on success
-                statusDiv.innerText = "✅ 10 keywords loaded securely!";
-                statusDiv.style.color = "green";
+                console.log("✅ 10 keywords loaded securely!");
                 keywordSelect.disabled = false;
                 keywordSelect.placeholder = "Double-click or type to view keywords...";
 
             } catch (error) {
-                console.error('Proxy Error:', error);
-                statusDiv.innerText = `❌ Error: ${error.message}`;
-                statusDiv.style.color = "red";
+                console.error(`❌ Error: ${error.message}`);
                 keywordSelect.placeholder = "Failed to load.";
             } finally {
+                // Clear the animated dots interval
+                clearInterval(loadingInterval);
+                
                 // Always re-enable the button when done
                 suggestBtn.disabled = false;
                 suggestBtn.innerText = "Suggest keywords";
